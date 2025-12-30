@@ -1,0 +1,1286 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Terminal</title>
+    <link rel="stylesheet" href="node_modules/@xterm/xterm/css/xterm.css">
+    <style>
+        :root {
+            --bg-primary: transparent;
+            --bg-secondary: transparent;
+            --bg-tertiary: rgba(255, 255, 255, 0.06);
+            --border-color: transparent;
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.6);
+            --accent: #58a6ff;
+            --tab-height: 26px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: transparent;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            color: var(--text-primary);
+        }
+
+        #titlebar {
+            height: 40px;
+            background: transparent;
+            -webkit-app-region: drag;
+            display: flex;
+            align-items: center;
+            padding-left: 76px;
+            padding-right: 12px;
+            flex-shrink: 0;
+        }
+
+        #tabs {
+            display: flex;
+            height: var(--tab-height);
+            align-items: center;
+            gap: 6px;
+            -webkit-app-region: no-drag;
+        }
+
+        .tab {
+            height: 100%;
+            min-width: 100px;
+            max-width: 160px;
+            background: rgba(255, 255, 255, 0.05);
+            border: none;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+            cursor: pointer;
+            transition: background 0.15s ease;
+            position: relative;
+            -webkit-app-region: no-drag;
+        }
+
+        .tab:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .tab.active {
+            background: rgba(255, 255, 255, 0.12);
+        }
+
+        .tab-title {
+            flex: 1;
+            font-family: 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
+            font-size: 11px;
+            font-weight: 300;
+            letter-spacing: 0.3px;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            text-align: left;
+        }
+
+        .tab.active .tab-title {
+            color: var(--text-primary);
+        }
+
+        .tab-close {
+            width: 14px;
+            height: 14px;
+            border-radius: 3px;
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: all 0.15s ease;
+            margin-left: 6px;
+            font-size: 12px;
+            -webkit-app-region: no-drag;
+        }
+
+        .tab:hover .tab-close,
+        .tab.active .tab-close {
+            opacity: 0.6;
+        }
+
+        .tab-close:hover {
+            opacity: 1;
+            background: rgba(255, 255, 255, 0.15);
+            color: var(--text-primary);
+        }
+
+        #new-tab-btn {
+            width: 22px;
+            height: 22px;
+            border-radius: 5px;
+            border: none;
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-left: 4px;
+            font-size: 14px;
+            transition: all 0.15s ease;
+            -webkit-app-region: no-drag;
+        }
+
+        #new-tab-btn:hover {
+            background: rgba(255, 255, 255, 0.12);
+            color: var(--text-primary);
+        }
+
+        #terminals-wrapper {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background: var(--bg-primary);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+
+        .terminal-instance {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            padding: 12px 4px 12px 16px;
+            visibility: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .terminal-instance.active {
+            visibility: visible;
+        }
+
+        .terminal-instance .xterm {
+            height: 100%;
+        }
+
+        .terminal-instance .xterm-viewport {
+            background: transparent !important;
+        }
+
+        .terminal-instance .xterm-screen {
+            background: transparent !important;
+        }
+
+        .terminal-instance .xterm-viewport::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        .terminal-instance .xterm-viewport::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .terminal-instance .xterm-viewport::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+        }
+
+        .terminal-instance .xterm-viewport::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.35);
+        }
+
+        #context-menu {
+            position: fixed;
+            display: none;
+            background: rgba(255, 255, 255, 0.08);
+            border: none;
+            border-radius: 10px;
+            padding: 5px;
+            min-width: 150px;
+            z-index: 1000;
+            font-family: 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
+            overflow: hidden;
+        }
+
+        #context-menu.visible {
+            display: block;
+        }
+
+        .context-menu-item {
+            padding: 6px 10px;
+            font-size: 11px;
+            font-weight: 300;
+            color: rgba(255, 255, 255, 0.8);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: background 0.1s ease;
+            background: transparent;
+            border-radius: 6px;
+        }
+
+        .context-menu-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .context-menu-item .shortcut {
+            font-size: 9px;
+            color: rgba(255, 255, 255, 0.35);
+            margin-left: 16px;
+        }
+
+        .context-menu-divider {
+            height: 1px;
+            background: rgba(255, 255, 255, 0.08);
+            margin: 4px 6px;
+        }
+
+        #shortcut-picker {
+            position: fixed;
+            display: none;
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            border-radius: 8px;
+            padding: 4px;
+            min-width: 200px;
+            max-width: 350px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            font-family: 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
+        }
+
+        #shortcut-picker.visible {
+            display: block;
+        }
+
+        .shortcut-item {
+            padding: 6px 10px;
+            font-size: 11px;
+            font-weight: 300;
+            color: rgba(255, 255, 255, 0.8);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-radius: 5px;
+            transition: background 0.1s ease;
+        }
+
+        .shortcut-item:hover,
+        .shortcut-item.selected {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .shortcut-item .shortcut-name {
+            color: #ffd43b;
+            margin-right: 12px;
+        }
+
+        .shortcut-item .shortcut-cmd {
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 10px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 180px;
+        }
+
+        #shortcut-picker-empty {
+            padding: 10px;
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.5);
+            text-align: center;
+        }
+
+        .picker-header {
+            padding: 6px 10px;
+            font-size: 10px;
+            color: rgba(255, 150, 150, 0.8);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 4px;
+        }
+
+        .split-container {
+            display: flex;
+            width: 100%;
+            height: 100%;
+            flex: 1 1 0;
+            min-width: 0;
+            min-height: 0;
+        }
+
+        .split-container.vertical {
+            flex-direction: row;
+        }
+
+        .split-container.horizontal {
+            flex-direction: column;
+        }
+
+        .pane {
+            flex: 1;
+            position: relative;
+            min-width: 80px;
+            min-height: 0;
+            display: flex;
+            overflow: hidden;
+            height: 100%;
+        }
+
+        .pane-terminal {
+            flex: 1;
+            padding: 8px;
+            height: 100%;
+            min-height: 0;
+        }
+
+        .split-divider {
+            background: rgba(255, 255, 255, 0.03);
+            flex-shrink: 0;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .split-divider::after {
+            content: '';
+            position: absolute;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 2px;
+            transition: background 0.15s ease;
+        }
+
+        .split-divider:hover::after {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .split-container.vertical > .split-divider {
+            width: 1px;
+            cursor: col-resize;
+        }
+
+        .split-container.vertical > .split-divider::after {
+            width: 4px;
+            height: 40px;
+        }
+
+        .split-container.horizontal > .split-divider {
+            height: 1px;
+            cursor: row-resize;
+        }
+
+        .split-container.horizontal > .split-divider::after {
+            width: 40px;
+            height: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div id="titlebar">
+        <div id="tabs"></div>
+        <button id="new-tab-btn" title="New Tab (Cmd+T)">+</button>
+    </div>
+    <div id="terminals-wrapper"></div>
+
+    <div id="context-menu">
+        <div class="context-menu-item" data-action="split-vertical">
+            <span>Split Vertical</span>
+        </div>
+        <div class="context-menu-item" data-action="split-horizontal">
+            <span>Split Horizontal</span>
+        </div>
+        <div class="context-menu-item" data-action="close-pane">
+            <span>Close Terminal</span>
+        </div>
+    </div>
+
+    <div id="shortcut-picker"></div>
+
+    <script>
+        const { Terminal } = require('@xterm/xterm');
+        const { FitAddon } = require('@xterm/addon-fit');
+        const pty = require('node-pty');
+        const { ipcRenderer } = require('electron');
+
+        const state = {
+            tabs: new Map(),
+            tabOrder: [],
+            activeTabId: null,
+            activePaneId: null,
+            nextTabId: 0,
+            nextPaneId: 0
+        };
+
+        // Debounce utility to prevent excessive fit() calls
+        function debounce(fn, delay) {
+            let timeoutId;
+            return function(...args) {
+                clearTimeout(timeoutId);
+                timeoutId = setTimeout(() => fn.apply(this, args), delay);
+            };
+        }
+
+        // Throttle utility for drag operations
+        function throttle(fn, delay) {
+            let lastCall = 0;
+            let scheduled = null;
+            return function(...args) {
+                const now = Date.now();
+                if (now - lastCall >= delay) {
+                    lastCall = now;
+                    fn.apply(this, args);
+                } else if (!scheduled) {
+                    scheduled = setTimeout(() => {
+                        lastCall = Date.now();
+                        scheduled = null;
+                        fn.apply(this, args);
+                    }, delay - (now - lastCall));
+                }
+            };
+        }
+
+        // Common Commands storage
+        const shortcuts = JSON.parse(localStorage.getItem('terminalShortcuts') || '{}');
+
+        function saveShortcuts() {
+            localStorage.setItem('terminalShortcuts', JSON.stringify(shortcuts));
+        }
+
+        function startShortcutCreation(ptyProcess, term, paneId) {
+            // Clear the line
+            ptyProcess.write('\x15');
+
+            term.write('\r\n\x1b[36m┌─ Create Shortcut ─────────────────────┐\x1b[0m\r\n');
+            term.write('\x1b[36m│\x1b[0m Shortcut name (e.g. test): ');
+
+            let step = 'name';
+            let shortcutName = '';
+            let shortcutCommand = '';
+            let inputBuffer = '';
+
+            const originalHandler = term._core._inputHandler;
+
+            const handleInput = (data) => {
+                if (data === '\r') {
+                    if (step === 'name') {
+                        shortcutName = inputBuffer.trim();
+                        if (!shortcutName) {
+                            term.write('\r\n\x1b[31mCancelled.\x1b[0m\r\n');
+                            ptyProcess.write('\r');
+                            term.onData.disposable?.dispose();
+                            return true;
+                        }
+                        inputBuffer = '';
+                        step = 'command';
+                        term.write('\r\n\x1b[36m│\x1b[0m Command to run: ');
+                    } else if (step === 'command') {
+                        shortcutCommand = inputBuffer.trim();
+                        if (!shortcutCommand) {
+                            term.write('\r\n\x1b[31mCancelled.\x1b[0m\r\n');
+                            ptyProcess.write('\r');
+                            return true;
+                        }
+                        shortcuts[shortcutName] = shortcutCommand;
+                        saveShortcuts();
+                        term.write('\r\n\x1b[36m└─────────────────────────────────────────┘\x1b[0m\r\n');
+                        term.write(`\x1b[32m✓ Shortcut created: /${shortcutName} → ${shortcutCommand}\x1b[0m\r\n`);
+                        ptyProcess.write('\r');
+                        return true;
+                    }
+                } else if (data === '\x7f') {
+                    if (inputBuffer.length > 0) {
+                        inputBuffer = inputBuffer.slice(0, -1);
+                        term.write('\b \b');
+                    }
+                } else if (data === '\x03') {
+                    term.write('\r\n\x1b[31mCancelled.\x1b[0m\r\n');
+                    ptyProcess.write('\r');
+                    return true;
+                } else if (data.charCodeAt(0) >= 32) {
+                    inputBuffer += data;
+                    term.write(data);
+                }
+                return false;
+            };
+
+            // Store handler for this pane
+            state.ccMode = state.ccMode || {};
+            state.ccMode[paneId] = handleInput;
+        }
+
+        // Shortcut picker state
+        const shortcutPicker = {
+            visible: false,
+            selectedIndex: 0,
+            items: [],
+            paneId: null,
+            ptyProcess: null,
+            term: null,
+            deleteMode: false,
+            confirmingDelete: false,
+            pendingDeleteKey: null
+        };
+
+        const pickerElement = document.getElementById('shortcut-picker');
+
+        function showShortcutPicker(term, ptyProcess, paneId, deleteMode = false) {
+            const keys = Object.keys(shortcuts);
+            if (keys.length === 0) {
+                pickerElement.innerHTML = `<div id="shortcut-picker-empty">No shortcuts yet. Use "cc" to create one.</div>`;
+            } else {
+                shortcutPicker.items = keys;
+                shortcutPicker.selectedIndex = 0;
+                renderPickerItems();
+            }
+
+            shortcutPicker.visible = true;
+            shortcutPicker.paneId = paneId;
+            shortcutPicker.ptyProcess = ptyProcess;
+            shortcutPicker.term = term;
+            shortcutPicker.deleteMode = deleteMode;
+            shortcutPicker.confirmingDelete = false;
+            shortcutPicker.pendingDeleteKey = null;
+
+            // Position near cursor (bottom left of terminal area)
+            const termWrapper = document.getElementById('terminals-wrapper');
+            const rect = termWrapper.getBoundingClientRect();
+            pickerElement.style.left = (rect.left + 20) + 'px';
+            pickerElement.style.bottom = '20px';
+            pickerElement.style.top = 'auto';
+
+            pickerElement.classList.add('visible');
+        }
+
+        function hideShortcutPicker() {
+            shortcutPicker.visible = false;
+            shortcutPicker.items = [];
+            pickerElement.classList.remove('visible');
+        }
+
+        function renderPickerItems() {
+            const header = shortcutPicker.deleteMode ?
+                `<div class="picker-header">Select shortcut to delete</div>` : '';
+
+            pickerElement.innerHTML = header + shortcutPicker.items.map((key, i) => `
+                <div class="shortcut-item ${i === shortcutPicker.selectedIndex ? 'selected' : ''}" data-index="${i}">
+                    <span class="shortcut-name">/${key}</span>
+                    <span class="shortcut-cmd">${shortcuts[key]}</span>
+                </div>
+            `).join('');
+
+            // Add click handlers
+            pickerElement.querySelectorAll('.shortcut-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    shortcutPicker.selectedIndex = parseInt(item.dataset.index);
+                    selectShortcut();
+                });
+            });
+        }
+
+        function navigatePicker(direction) {
+            if (shortcutPicker.items.length === 0) return;
+            shortcutPicker.selectedIndex += direction;
+            if (shortcutPicker.selectedIndex < 0) shortcutPicker.selectedIndex = shortcutPicker.items.length - 1;
+            if (shortcutPicker.selectedIndex >= shortcutPicker.items.length) shortcutPicker.selectedIndex = 0;
+            renderPickerItems();
+        }
+
+        function selectShortcut() {
+            if (shortcutPicker.items.length === 0) {
+                hideShortcutPicker();
+                return;
+            }
+            const selectedKey = shortcutPicker.items[shortcutPicker.selectedIndex];
+
+            if (shortcutPicker.deleteMode) {
+                // Show confirmation in picker
+                shortcutPicker.confirmingDelete = true;
+                shortcutPicker.pendingDeleteKey = selectedKey;
+                pickerElement.innerHTML = `
+                    <div class="picker-header">Delete /${selectedKey}?</div>
+                    <div class="shortcut-item" style="justify-content: center; color: rgba(255,255,255,0.6);">
+                        Press <span style="color: #69db7c; margin: 0 4px;">y</span> to confirm or <span style="color: #ff6b6b; margin: 0 4px;">n</span> to cancel
+                    </div>
+                `;
+                return;
+            }
+
+            const command = shortcuts[selectedKey];
+
+            // Clear current input and run command
+            shortcutPicker.ptyProcess.write('\x15');
+            shortcutPicker.ptyProcess.write(command + '\r');
+
+            hideShortcutPicker();
+        }
+
+        async function openFolderPicker(ptyProcess, term) {
+            try {
+                // Clear the current line first (Ctrl+U)
+                ptyProcess.write('\x15');
+
+                const folderPath = await ipcRenderer.invoke('open-folder-dialog');
+                if (folderPath) {
+                    // Send cd command to the shell
+                    ptyProcess.write(`cd "${folderPath}"\r`);
+                } else {
+                    // User cancelled, just show a new prompt
+                    ptyProcess.write('\r');
+                }
+            } catch (err) {
+                term.write('\x1b[31mError opening folder picker\x1b[0m\r\n');
+            }
+        }
+
+        const terminalConfig = {
+            cursorBlink: true,
+            cursorStyle: 'bar',
+            fontSize: 13,
+            fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+            lineHeight: 1.2,
+            theme: {
+                background: 'transparent',
+                foreground: '#ffffff',
+                cursor: '#ffffff',
+                cursorAccent: 'transparent',
+                selectionBackground: 'rgba(255, 255, 255, 0.2)',
+                black: '#686868',
+                red: '#ff6b6b',
+                green: '#69db7c',
+                yellow: '#ffd43b',
+                blue: '#74c0fc',
+                magenta: '#da77f2',
+                cyan: '#66d9e8',
+                white: '#e9ecef',
+                brightBlack: '#868e96',
+                brightRed: '#ff8787',
+                brightGreen: '#8ce99a',
+                brightYellow: '#ffe066',
+                brightBlue: '#a5d8ff',
+                brightMagenta: '#e599f7',
+                brightCyan: '#99e9f2',
+                brightWhite: '#ffffff'
+            },
+            allowTransparency: true,
+            scrollback: 10000
+        };
+
+        function createTerminalInPane(paneElement) {
+            const paneId = state.nextPaneId++;
+            paneElement.dataset.paneId = paneId;
+
+            const termContainer = document.createElement('div');
+            termContainer.className = 'pane-terminal';
+            paneElement.appendChild(termContainer);
+
+            const term = new Terminal(terminalConfig);
+            const fitAddon = new FitAddon();
+            term.loadAddon(fitAddon);
+            term.open(termContainer);
+
+            setTimeout(() => fitAddon.fit(), 0);
+
+            const shell = process.env.SHELL || '/bin/zsh';
+            let ptyProcess;
+
+            try {
+                ptyProcess = pty.spawn(shell, ['-l'], {
+                    name: 'xterm-256color',
+                    cols: term.cols || 80,
+                    rows: term.rows || 24,
+                    cwd: process.env.HOME,
+                    env: { ...process.env, TERM: 'xterm-256color' }
+                });
+            } catch (err) {
+                console.error('Failed to spawn PTY:', err);
+                term.write('\r\n\x1b[31mError: Failed to start shell\x1b[0m\r\n');
+                return null;
+            }
+
+            let inputBuffer = '';
+
+            term.onData(data => {
+                // Check if in cc mode (creating shortcut)
+                if (state.ccMode && state.ccMode[paneId]) {
+                    const done = state.ccMode[paneId](data);
+                    if (done) {
+                        delete state.ccMode[paneId];
+                    }
+                    return;
+                }
+
+                // Handle shortcut picker navigation
+                if (shortcutPicker.visible && shortcutPicker.paneId === paneId) {
+                    // Handle delete confirmation
+                    if (shortcutPicker.confirmingDelete) {
+                        if (data === 'y' || data === 'Y') {
+                            // Delete the shortcut
+                            const keyToDelete = shortcutPicker.pendingDeleteKey;
+                            delete shortcuts[keyToDelete];
+                            saveShortcuts();
+                            term.write(`\r\n\x1b[32m✓ Deleted shortcut: /${keyToDelete}\x1b[0m\r\n`);
+                            hideShortcutPicker();
+                            ptyProcess.write('\r');
+                            inputBuffer = '';
+                            return;
+                        } else if (data === 'n' || data === 'N' || data === '\x1b' || data === '\x03') {
+                            // Cancel - go back to picker
+                            shortcutPicker.confirmingDelete = false;
+                            shortcutPicker.pendingDeleteKey = null;
+                            renderPickerItems();
+                            return;
+                        }
+                        // Ignore other keys during confirmation
+                        return;
+                    }
+
+                    // Arrow up
+                    if (data === '\x1b[A') {
+                        navigatePicker(-1);
+                        return;
+                    }
+                    // Arrow down
+                    if (data === '\x1b[B') {
+                        navigatePicker(1);
+                        return;
+                    }
+                    // Enter - select
+                    if (data === '\r') {
+                        selectShortcut();
+                        inputBuffer = '';
+                        return;
+                    }
+                    // Escape or Ctrl+C - cancel
+                    if (data === '\x1b' || data === '\x03') {
+                        hideShortcutPicker();
+                        ptyProcess.write('\x15');
+                        ptyProcess.write('\r');
+                        inputBuffer = '';
+                        return;
+                    }
+                    // Any other key closes picker and continues
+                    hideShortcutPicker();
+                }
+
+                // Check for custom commands on Enter
+                if (data === '\r') {
+                    const cmd = inputBuffer.trim();
+
+                    // "finder" command - open folder picker
+                    if (cmd === 'finder') {
+                        term.write('\r\n');
+                        openFolderPicker(ptyProcess, term);
+                        inputBuffer = '';
+                        return;
+                    }
+
+                    // "cc" command - create new shortcut
+                    if (cmd === 'cc') {
+                        startShortcutCreation(ptyProcess, term, paneId);
+                        inputBuffer = '';
+                        return;
+                    }
+
+                    // "cc list" or just "/" - show shortcut picker
+                    if (cmd === 'cc list' || cmd === '/') {
+                        ptyProcess.write('\x15');
+                        showShortcutPicker(term, ptyProcess, paneId);
+                        inputBuffer = '';
+                        return;
+                    }
+
+                    // "cc del" - open picker in delete mode
+                    if (cmd === 'cc del') {
+                        ptyProcess.write('\x15');
+                        showShortcutPicker(term, ptyProcess, paneId, true);
+                        inputBuffer = '';
+                        return;
+                    }
+
+                    // "cc delete <name>" - delete a shortcut (legacy)
+                    if (cmd.startsWith('cc delete ')) {
+                        const name = cmd.slice(10).trim();
+                        ptyProcess.write('\x15');
+                        if (shortcuts[name]) {
+                            delete shortcuts[name];
+                            saveShortcuts();
+                            term.write(`\r\n\x1b[32m✓ Deleted shortcut: /${name}\x1b[0m\r\n`);
+                        } else {
+                            term.write(`\r\n\x1b[31m✗ Shortcut not found: ${name}\x1b[0m\r\n`);
+                        }
+                        ptyProcess.write('\r');
+                        inputBuffer = '';
+                        return;
+                    }
+
+                    // Check for "/shortcut" commands (direct execution)
+                    if (cmd.startsWith('/') && cmd.length > 1) {
+                        const shortcutName = cmd.slice(1);
+                        if (shortcuts[shortcutName]) {
+                            ptyProcess.write('\x15');
+                            ptyProcess.write(shortcuts[shortcutName] + '\r');
+                            inputBuffer = '';
+                            return;
+                        }
+                    }
+
+                    inputBuffer = '';
+                } else if (data === '\x7f') {
+                    // Backspace
+                    inputBuffer = inputBuffer.slice(0, -1);
+                } else if (data.charCodeAt(0) >= 32) {
+                    inputBuffer += data;
+                } else if (data === '\x03' || data === '\x15') {
+                    // Ctrl+C or Ctrl+U clears buffer
+                    inputBuffer = '';
+                    if (state.ccMode && state.ccMode[paneId]) {
+                        delete state.ccMode[paneId];
+                    }
+                    hideShortcutPicker();
+                }
+                ptyProcess.write(data);
+            });
+
+            ptyProcess.onData(data => term.write(data));
+            term.onResize(({ cols, rows }) => ptyProcess.resize(cols, rows));
+
+            // Focus tracking (click only - no per-keystroke tracking)
+            termContainer.addEventListener('click', () => {
+                state.activePaneId = paneId;
+                term.focus();
+            });
+
+            const paneData = { id: paneId, term, pty: ptyProcess, fitAddon, element: paneElement, termContainer };
+
+            // Debounced fit function to prevent flickering
+            const debouncedFit = debounce(() => {
+                try { fitAddon.fit(); } catch (e) {}
+            }, 16); // ~60fps cap
+
+            // ResizeObserver for responsive terminal (debounced)
+            const resizeObserver = new ResizeObserver(() => {
+                debouncedFit();
+            });
+            resizeObserver.observe(paneElement); // Watch pane, not termContainer to avoid feedback loop
+            paneData.resizeObserver = resizeObserver;
+            paneData.debouncedFit = debouncedFit;
+
+            // Store in current tab
+            const tabData = state.tabs.get(state.activeTabId);
+            if (tabData) {
+                tabData.panes.set(paneId, paneData);
+            }
+
+            state.activePaneId = paneId;
+            requestAnimationFrame(() => term.focus());
+
+            return paneData;
+        }
+
+        function splitPane(direction) {
+            const tabData = state.tabs.get(state.activeTabId);
+            if (!tabData) return;
+
+            // Find the active pane
+            const activePane = tabData.panes.get(state.activePaneId);
+            if (!activePane) return;
+
+            const paneElement = activePane.element;
+            const parent = paneElement.parentElement;
+
+            // Preserve any existing flex style
+            const existingFlex = paneElement.style.flex;
+
+            // Create split container
+            const splitContainer = document.createElement('div');
+            splitContainer.className = `split-container ${direction}`;
+            if (existingFlex) {
+                splitContainer.style.flex = existingFlex;
+            }
+
+            // Create first pane (will contain the existing terminal)
+            const pane1 = document.createElement('div');
+            pane1.className = 'pane';
+            pane1.dataset.paneId = activePane.id;
+
+            // Move existing terminal content to pane1
+            while (paneElement.firstChild) {
+                pane1.appendChild(paneElement.firstChild);
+            }
+            activePane.element = pane1;
+
+            // Create divider
+            const divider = document.createElement('div');
+            divider.className = 'split-divider';
+            setupDividerDrag(divider, direction);
+
+            // Create second pane (new terminal)
+            const pane2 = document.createElement('div');
+            pane2.className = 'pane';
+
+            // Assemble
+            splitContainer.appendChild(pane1);
+            splitContainer.appendChild(divider);
+            splitContainer.appendChild(pane2);
+
+            // Replace the original pane element
+            parent.replaceChild(splitContainer, paneElement);
+
+            // Create new terminal in pane2
+            createTerminalInPane(pane2);
+
+            // Refit all terminals in this tab
+            setTimeout(() => fitAllPanes(tabData), 50);
+        }
+
+        function setupDividerDrag(divider, direction) {
+            let startPos, startSizes, siblings;
+
+            divider.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                const container = divider.parentElement;
+
+                // Get the two siblings (pane or split-container) adjacent to this divider
+                const children = Array.from(container.children);
+                const dividerIndex = children.indexOf(divider);
+                siblings = [children[dividerIndex - 1], children[dividerIndex + 1]];
+
+                if (!siblings[0] || !siblings[1]) return;
+
+                startPos = direction === 'vertical' ? e.clientX : e.clientY;
+                startSizes = siblings.map(s => direction === 'vertical' ? s.offsetWidth : s.offsetHeight);
+
+                // Throttled fit during drag to prevent flickering
+                const throttledFit = throttle(() => {
+                    const tabData = state.tabs.get(state.activeTabId);
+                    if (tabData) fitAllPanes(tabData);
+                }, 32); // ~30fps during drag
+
+                const onMouseMove = (e) => {
+                    const currentPos = direction === 'vertical' ? e.clientX : e.clientY;
+                    const delta = currentPos - startPos;
+                    const totalSize = startSizes[0] + startSizes[1];
+
+                    let newSize1 = startSizes[0] + delta;
+                    let newSize2 = startSizes[1] - delta;
+
+                    // Minimum size constraints
+                    const minSize = direction === 'vertical' ? 80 : 60;
+                    if (newSize1 < minSize) { newSize1 = minSize; newSize2 = totalSize - minSize; }
+                    if (newSize2 < minSize) { newSize2 = minSize; newSize1 = totalSize - minSize; }
+
+                    siblings[0].style.flex = `0 0 ${newSize1}px`;
+                    siblings[1].style.flex = `0 0 ${newSize2}px`;
+
+                    // Refit terminals (throttled)
+                    throttledFit();
+                };
+
+                const onMouseUp = () => {
+                    document.removeEventListener('mousemove', onMouseMove);
+                    document.removeEventListener('mouseup', onMouseUp);
+                    // Final fit on mouse up to ensure correct sizing
+                    const tabData = state.tabs.get(state.activeTabId);
+                    if (tabData) fitAllPanes(tabData, true);
+                };
+
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+            });
+        }
+
+        function fitAllPanes(tabData, immediate = false) {
+            tabData.panes.forEach(pane => {
+                if (immediate) {
+                    try { pane.fitAddon.fit(); } catch (e) {}
+                } else if (pane.debouncedFit) {
+                    pane.debouncedFit();
+                } else {
+                    try { pane.fitAddon.fit(); } catch (e) {}
+                }
+            });
+        }
+
+        function closePane(paneId) {
+            const tabData = state.tabs.get(state.activeTabId);
+            if (!tabData) return;
+
+            const paneData = tabData.panes.get(paneId);
+            if (!paneData) return;
+
+            // If this is the only pane, close the tab instead
+            if (tabData.panes.size === 1) {
+                closeTab(state.activeTabId);
+                return;
+            }
+
+            // Kill PTY, dispose terminal, and cleanup observer
+            try { paneData.pty.kill(); } catch (e) {}
+            if (paneData.resizeObserver) paneData.resizeObserver.disconnect();
+            paneData.term.dispose();
+
+            const paneElement = paneData.element;
+            const splitContainer = paneElement.parentElement;
+
+            // Find the sibling (the other pane or split-container)
+            const children = Array.from(splitContainer.children);
+            const sibling = children.find(c => c !== paneElement && !c.classList.contains('split-divider'));
+
+            if (sibling && splitContainer.parentElement) {
+                const parent = splitContainer.parentElement;
+
+                // Preserve flex if the split container had one
+                if (splitContainer.style.flex) {
+                    sibling.style.flex = splitContainer.style.flex;
+                } else {
+                    sibling.style.flex = '1';
+                }
+
+                // Replace split container with the sibling
+                parent.replaceChild(sibling, splitContainer);
+
+                // Update pane element reference if sibling is a pane
+                if (sibling.classList.contains('pane') && sibling.dataset.paneId) {
+                    const siblingPaneData = tabData.panes.get(parseInt(sibling.dataset.paneId));
+                    if (siblingPaneData) {
+                        siblingPaneData.element = sibling;
+                    }
+                }
+            }
+
+            // Remove from state
+            tabData.panes.delete(paneId);
+
+            // Set new active pane
+            const remainingPane = tabData.panes.values().next().value;
+            if (remainingPane) {
+                state.activePaneId = remainingPane.id;
+                remainingPane.term.focus();
+            }
+
+            // Refit all
+            setTimeout(() => fitAllPanes(tabData), 50);
+        }
+
+        function createTab(id) {
+            const tab = document.createElement('div');
+            tab.className = 'tab';
+            tab.dataset.id = id;
+
+            const title = document.createElement('span');
+            title.className = 'tab-title';
+            title.textContent = `Terminal ${id + 1}`;
+
+            const closeBtn = document.createElement('button');
+            closeBtn.className = 'tab-close';
+            closeBtn.innerHTML = '×';
+            closeBtn.onclick = (e) => {
+                e.stopPropagation();
+                closeTab(id);
+            };
+
+            tab.appendChild(title);
+            tab.appendChild(closeBtn);
+            tab.onclick = () => switchToTab(id);
+
+            document.getElementById('tabs').appendChild(tab);
+            return tab;
+        }
+
+        function createTabContent(tabId) {
+            const wrapper = document.getElementById('terminals-wrapper');
+
+            const container = document.createElement('div');
+            container.className = 'terminal-instance active';
+            container.dataset.tabId = tabId;
+            wrapper.appendChild(container);
+
+            // Create root pane
+            const rootPane = document.createElement('div');
+            rootPane.className = 'pane';
+            container.appendChild(rootPane);
+
+            const tabData = { id: tabId, container, panes: new Map() };
+            state.tabs.set(tabId, tabData);
+            state.tabOrder.push(tabId);
+            state.activeTabId = tabId;
+
+            // Create first terminal in root pane
+            createTerminalInPane(rootPane);
+
+            return tabData;
+        }
+
+        function switchToTab(id) {
+            if (!state.tabs.has(id)) return;
+
+            document.querySelectorAll('.tab').forEach(t => {
+                t.classList.toggle('active', parseInt(t.dataset.id) === id);
+            });
+
+            document.querySelectorAll('.terminal-instance').forEach(c => {
+                c.classList.toggle('active', parseInt(c.dataset.tabId) === id);
+            });
+
+            state.activeTabId = id;
+
+            const tabData = state.tabs.get(id);
+            requestAnimationFrame(() => {
+                fitAllPanes(tabData);
+                // Focus first pane
+                const firstPane = tabData.panes.values().next().value;
+                if (firstPane) {
+                    state.activePaneId = firstPane.id;
+                    firstPane.term.focus();
+                }
+            });
+        }
+
+        function closeTab(id) {
+            const tabData = state.tabs.get(id);
+            if (!tabData) return;
+
+            // Kill all PTYs in this tab
+            tabData.panes.forEach(pane => {
+                try { pane.pty.kill(); } catch (e) {}
+                if (pane.resizeObserver) pane.resizeObserver.disconnect();
+                pane.term.dispose();
+            });
+
+            tabData.container.remove();
+            document.querySelector(`.tab[data-id="${id}"]`)?.remove();
+
+            state.tabs.delete(id);
+            state.tabOrder = state.tabOrder.filter(i => i !== id);
+
+            if (state.tabOrder.length === 0) {
+                newTab();
+            } else if (state.activeTabId === id) {
+                switchToTab(state.tabOrder[state.tabOrder.length - 1]);
+            }
+        }
+
+        function newTab() {
+            document.querySelectorAll('.terminal-instance').forEach(c => c.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+
+            const id = state.nextTabId++;
+            createTab(id);
+            document.querySelector(`.tab[data-id="${id}"]`)?.classList.add('active');
+
+            createTabContent(id);
+        }
+
+        function nextTab() {
+            if (state.tabOrder.length <= 1) return;
+            const idx = state.tabOrder.indexOf(state.activeTabId);
+            const nextIdx = (idx + 1) % state.tabOrder.length;
+            switchToTab(state.tabOrder[nextIdx]);
+        }
+
+        function prevTab() {
+            if (state.tabOrder.length <= 1) return;
+            const idx = state.tabOrder.indexOf(state.activeTabId);
+            const prevIdx = (idx - 1 + state.tabOrder.length) % state.tabOrder.length;
+            switchToTab(state.tabOrder[prevIdx]);
+        }
+
+        function clearTerminal() {
+            const tabData = state.tabs.get(state.activeTabId);
+            if (!tabData) return;
+            const pane = tabData.panes.get(state.activePaneId);
+            if (pane) pane.term.clear();
+        }
+
+        // IPC handlers
+        ipcRenderer.on('new-tab', newTab);
+        ipcRenderer.on('close-tab', () => closeTab(state.activeTabId));
+        ipcRenderer.on('next-tab', nextTab);
+        ipcRenderer.on('prev-tab', prevTab);
+        ipcRenderer.on('clear-terminal', clearTerminal);
+
+        // UI event listeners
+        document.getElementById('new-tab-btn').onclick = newTab;
+
+        // Debounced window resize handler
+        const debouncedWindowResize = debounce(() => {
+            state.tabs.forEach(tabData => fitAllPanes(tabData, true));
+        }, 50);
+        window.addEventListener('resize', debouncedWindowResize);
+
+        // Context menu
+        const contextMenu = document.getElementById('context-menu');
+
+        function showContextMenu(e) {
+            e.preventDefault();
+
+            // Find which pane was right-clicked
+            const paneTerminal = e.target.closest('.pane-terminal');
+            if (paneTerminal) {
+                const paneElement = paneTerminal.closest('.pane');
+                if (paneElement && paneElement.dataset.paneId) {
+                    state.activePaneId = parseInt(paneElement.dataset.paneId);
+                }
+            }
+
+            const menuWidth = 150;
+            const menuHeight = 70;
+            const posX = e.clientX + menuWidth > window.innerWidth ? e.clientX - menuWidth : e.clientX;
+            const posY = e.clientY + menuHeight > window.innerHeight ? e.clientY - menuHeight : e.clientY;
+
+            contextMenu.style.left = posX + 'px';
+            contextMenu.style.top = posY + 'px';
+            contextMenu.classList.add('visible');
+        }
+
+        function hideContextMenu() {
+            contextMenu.classList.remove('visible');
+        }
+
+        document.getElementById('terminals-wrapper').addEventListener('contextmenu', showContextMenu);
+        document.addEventListener('click', hideContextMenu);
+
+        contextMenu.addEventListener('click', (e) => {
+            const item = e.target.closest('.context-menu-item');
+            if (!item) return;
+
+            const action = item.dataset.action;
+
+            switch (action) {
+                case 'split-vertical':
+                    splitPane('vertical');
+                    break;
+                case 'split-horizontal':
+                    splitPane('horizontal');
+                    break;
+                case 'close-pane':
+                    closePane(state.activePaneId);
+                    break;
+            }
+
+            hideContextMenu();
+        });
+
+        // Start with one terminal
+        try {
+            console.log('Creating initial tab...');
+            newTab();
+            console.log('Initial tab created, tabs:', state.tabs.size);
+        } catch (e) {
+            console.error('Failed to create initial tab:', e);
+            alert('Failed to create terminal: ' + e.message);
+        }
+    </script>
+</body>
+</html>
