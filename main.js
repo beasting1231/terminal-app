@@ -23,6 +23,13 @@ function toggleWindow() {
     }
 }
 
+// Handle closing window when last tab is closed
+ipcMain.on('close-window', () => {
+    if (mainWindow) {
+        mainWindow.close();
+    }
+});
+
 // Handle opening URLs in default browser
 ipcMain.handle('open-external-url', async (_, url) => {
     try {
@@ -144,7 +151,11 @@ function createMenu() {
                 { role: 'cut' },
                 { role: 'copy' },
                 { role: 'paste' },
-                { role: 'selectAll' }
+                {
+                    label: 'Select All',
+                    accelerator: 'CmdOrCtrl+A',
+                    click: () => mainWindow?.webContents.send('select-all')
+                }
             ]
         },
         {
