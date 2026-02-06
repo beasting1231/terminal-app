@@ -1,7 +1,38 @@
-const { app, BrowserWindow, Menu, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, shell, globalShortcut } = require('electron');
 const path = require('path');
 
 let mainWindow;
+let isHidden = false;
+
+// Global hotkey to toggle terminal visibility
+const GLOBAL_HOTKEY = 'Control+`';
+
+function toggleWindow() {
+    if (!mainWindow) {
+        createWindow();
+        return;
+    }
+
+    if (isHidden || !mainWindow.isVisible()) {
+        mainWindow.show();
+        mainWindow.focus();
+        isHidden = false;
+    } else {
+        mainWindow.hide();
+        isHidden = true;
+    }
+}
+
+// Handle opening URLs in default browser
+ipcMain.handle('open-external-url', async (_, url) => {
+    try {
+        await shell.openExternal(url);
+        return true;
+    } catch (err) {
+        console.error('Failed to open URL:', err);
+        return false;
+    }
+});
 
 // Handle folder picker dialog
 ipcMain.handle('open-folder-dialog', async () => {
@@ -39,6 +70,14 @@ function createWindow() {
 
     mainWindow.on('closed', () => {
         mainWindow = null;
+    });
+
+    mainWindow.on('enter-full-screen', () => {
+        mainWindow.webContents.send('fullscreen-change', true);
+    });
+
+    mainWindow.on('leave-full-screen', () => {
+        mainWindow.webContents.send('fullscreen-change', false);
     });
 }
 
@@ -83,6 +122,12 @@ function createMenu() {
                     click: () => mainWindow?.webContents.send('prev-tab')
                 },
                 { type: 'separator' },
+                ...Array.from({ length: 9 }, (_, i) => ({
+                    label: `Tab ${i + 1}`,
+                    accelerator: `CmdOrCtrl+${i + 1}`,
+                    click: () => mainWindow?.webContents.send('switch-to-tab-index', i)
+                })),
+                { type: 'separator' },
                 {
                     label: 'Clear',
                     accelerator: 'CmdOrCtrl+K',
@@ -121,6 +166,12 @@ function createMenu() {
                 { role: 'minimize' },
                 { role: 'zoom' },
                 { type: 'separator' },
+                {
+                    label: 'Toggle Quick Terminal',
+                    accelerator: GLOBAL_HOTKEY,
+                    click: toggleWindow
+                },
+                { type: 'separator' },
                 { role: 'front' }
             ]
         }
@@ -132,12 +183,23 @@ function createMenu() {
 app.whenReady().then(() => {
     createWindow();
     createMenu();
+
+    // Register global hotkey
+    const registered = globalShortcut.register(GLOBAL_HOTKEY, toggleWindow);
+    if (!registered) {
+        console.error('Failed to register global hotkey:', GLOBAL_HOTKEY);
+    }
 });
 
 app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
         app.quit();
     }
+});
+
+app.on('will-quit', () => {
+    // Unregister all global shortcuts
+    globalShortcut.unregisterAll();
 });
 
 app.on('activate', () => {
