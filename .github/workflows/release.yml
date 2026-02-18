@@ -54,13 +54,12 @@ jobs:
 
   update-homebrew-cask:
     needs: build-and-release
-    if: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN != '' }}
     runs-on: ubuntu-latest
     steps:
       - name: Update cask in tap repo
         env:
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
-          TAP_REPO: ${{ secrets.HOMEBREW_TAP_REPO || format('{0}/homebrew-tap', github.repository_owner) }}
+          TAP_REPO: ${{ secrets.HOMEBREW_TAP_REPO }}
           VERSION: ${{ needs.build-and-release.outputs.version }}
           DMG_NAME: ${{ needs.build-and-release.outputs.dmg_name }}
           DMG_SHA256: ${{ needs.build-and-release.outputs.dmg_sha256 }}
@@ -69,6 +68,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "HOMEBREW_TAP_GITHUB_TOKEN is not set. Skipping cask update."
+            exit 0
+          fi
+          TAP_REPO="${TAP_REPO:-${OWNER}/homebrew-tap}"
           git clone "https://x-access-token:${GH_TOKEN}@github.com/${TAP_REPO}.git" tap
           mkdir -p tap/Casks
 
