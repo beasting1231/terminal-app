@@ -1,6 +1,6 @@
 {
   "name": "terminal",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A simple terminal emulator for macOS",
   "main": "main.js",
   "repository": {
