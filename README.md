@@ -56,7 +56,7 @@ Create custom shortcuts for frequently used commands:
 ### Install with Homebrew (recommended)
 
 ```bash
-brew install --cask beasting1231/tap/terminal-app
+brew tap beasting1231/tap && brew install --cask terminal-app
 ```
 
 ### Run from source
