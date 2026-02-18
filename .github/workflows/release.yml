@@ -94,11 +94,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          if git diff --quiet; then
+          git add Casks/terminal-app.rb
+          if git diff --cached --quiet; then
             echo "No cask changes to commit."
             exit 0
           fi
 
-          git add Casks/terminal-app.rb
           git commit -m "terminal-app ${VERSION}"
           git push
