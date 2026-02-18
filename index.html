@@ -9,6 +9,7 @@
             --bg-primary: transparent;
             --bg-secondary: transparent;
             --bg-tertiary: rgba(255, 255, 255, 0.06);
+            --bg-accent-focused: rgba(255, 255, 255, 0.22);
             --border-color: transparent;
             --text-primary: #ffffff;
             --text-secondary: rgba(255, 255, 255, 0.6);
@@ -33,7 +34,7 @@
         }
 
         #titlebar {
-            height: 40px;
+            height: 50px;
             background: transparent;
             -webkit-app-region: drag;
             display: flex;
@@ -53,7 +54,6 @@
             height: var(--tab-height);
             align-items: center;
             gap: 6px;
-            -webkit-app-region: no-drag;
             overflow-x: auto;
             overflow-y: hidden;
             flex: 1;
@@ -68,7 +68,7 @@
         .tab {
             height: 100%;
             min-width: 100px;
-            max-width: 160px;
+            max-width: fit-content;
             background: rgba(255, 255, 255, 0.05);
             border: none;
             border-radius: 6px;
@@ -101,10 +101,27 @@
             overflow: hidden;
             text-overflow: ellipsis;
             text-align: left;
+            user-select: none;
+            cursor: pointer;
         }
 
         .tab.active .tab-title {
             color: var(--text-primary);
+        }
+
+        .tab-title-input {
+            flex: 1;
+            font-family: 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
+            font-size: 11px;
+            font-weight: 300;
+            letter-spacing: 0.3px;
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--accent);
+            border-radius: 3px;
+            padding: 2px 4px;
+            outline: none;
+            min-width: 80px;
         }
 
         .tab-close {
@@ -136,46 +153,6 @@
             color: var(--text-primary);
         }
 
-        /* Tab drag and drop styles */
-        .tab.dragging {
-            opacity: 0.5;
-            background: rgba(255, 255, 255, 0.15);
-            cursor: grabbing;
-        }
-
-        .tab.drag-over-left::before {
-            content: '';
-            position: absolute;
-            left: -4px;
-            top: 4px;
-            bottom: 4px;
-            width: 2px;
-            background: var(--accent);
-            border-radius: 1px;
-            box-shadow: 0 0 6px var(--accent);
-        }
-
-        .tab.drag-over-right::after {
-            content: '';
-            position: absolute;
-            right: -4px;
-            top: 4px;
-            bottom: 4px;
-            width: 2px;
-            background: var(--accent);
-            border-radius: 1px;
-            box-shadow: 0 0 6px var(--accent);
-        }
-
-        .tab-drag-preview {
-            position: fixed;
-            pointer-events: none;
-            z-index: 10000;
-            opacity: 0.9;
-            transform: scale(1.02);
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-        }
-
         #new-tab-btn {
             width: 22px;
             height: 22px;
@@ -196,6 +173,35 @@
         #new-tab-btn:hover {
             background: rgba(255, 255, 255, 0.12);
             color: var(--text-primary);
+        }
+
+        #lock-btn {
+            width: 22px;
+            height: 22px;
+            border-radius: 5px;
+            border: none;
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-left: 4px;
+            transition: all 0.15s ease;
+            -webkit-app-region: no-drag;
+            opacity: 0.5;
+        }
+
+        #lock-btn:hover {
+            background: rgba(255, 255, 255, 0.12);
+            color: var(--text-primary);
+            opacity: 1;
+        }
+
+        #lock-btn.active {
+            background: rgba(88, 166, 255, 0.2);
+            color: var(--accent);
+            opacity: 1;
         }
 
         #terminals-wrapper {
@@ -239,6 +245,23 @@
 
         .terminal-instance .xterm-screen {
             background: transparent !important;
+        }
+
+        .terminal-instance .xterm-cursor-pointer {
+            color: var(--accent) !important;
+            text-decoration: underline;
+            cursor: pointer;
+        }
+
+        .terminal-instance .xterm .xterm-cursor-pointer {
+            color: var(--accent) !important;
+            text-decoration: underline;
+            cursor: pointer;
+        }
+
+        .terminal-instance .xterm-cursor-pointer:hover,
+        .terminal-instance .xterm .xterm-cursor-pointer:hover {
+            opacity: 0.9;
         }
 
         .terminal-instance .xterm-viewport::-webkit-scrollbar {
@@ -522,6 +545,12 @@
             overflow: hidden;
             height: 100%;
             max-width: 100%;
+            background: transparent;
+            transition: background 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .pane-focused {
+            background: var(--bg-accent-focused);
         }
 
         .pane-terminal {
@@ -694,6 +723,12 @@
     <div id="titlebar">
         <div id="tabs"></div>
         <button id="new-tab-btn" title="New Tab (Cmd+T)">+</button>
+        <button id="lock-btn" title="Always on Top (Cmd+L)">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5">
+                <rect x="5" y="11" width="14" height="10" rx="2"/>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+        </button>
     </div>
     <div id="search-bar">
         <div class="search-left">
@@ -744,9 +779,37 @@
         const pty = require('node-pty');
         const { ipcRenderer } = require('electron');
 
+        const URL_SCHEME_RE = /^[a-zA-Z][a-zA-Z\d+\-.]*:/;
+
+        function normalizeExternalUrl(url) {
+            if (typeof url !== 'string') return null;
+            const trimmed = url.trim();
+            if (!trimmed) return null;
+
+            const withScheme = URL_SCHEME_RE.test(trimmed) || trimmed.startsWith('//')
+                ? trimmed
+                : `https://${trimmed}`;
+
+            try {
+                return new URL(withScheme).toString();
+            } catch {
+                return null;
+            }
+        }
+
+        function openExternalUrl(url) {
+            const normalizedUrl = normalizeExternalUrl(url);
+            if (!normalizedUrl) return;
+            ipcRenderer.invoke('open-external-url', normalizedUrl);
+        }
+
         // URL handler for opening links in default browser
         function handleUrlClick(event, url) {
-            ipcRenderer.invoke('open-external-url', url);
+            if (event) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+            openExternalUrl(url);
         }
 
         const state = {
@@ -757,6 +820,7 @@
             nextTabId: 0,
             nextPaneId: 0,
             tabCwds: new Map(), // Track cwd for each tab
+            tabCustomNames: new Map(), // Track custom names for tabs
             search: {
                 visible: false,
                 matches: [],
@@ -823,6 +887,26 @@
             const tabData = state.tabs.get(state.activeTabId);
             if (!tabData) return null;
             return tabData.panes.get(state.activePaneId);
+        }
+
+        function setActivePane(paneId, options = {}) {
+            const { focusPane = false } = options;
+            state.activePaneId = paneId;
+
+            document.querySelectorAll('.pane').forEach((pane) => {
+                pane.classList.remove('pane-focused');
+            });
+
+            const tabData = state.tabs.get(state.activeTabId);
+            const paneData = tabData ? tabData.panes.get(paneId) : null;
+
+            if (paneData && paneData.element && tabData && tabData.panes.size > 1) {
+                paneData.element.classList.add('pane-focused');
+            }
+
+            if (focusPane && paneData && paneData.term) {
+                requestAnimationFrame(() => paneData.term.focus());
+            }
         }
 
         function performSearch(query) {
@@ -980,16 +1064,21 @@
             const folderIndices = new Map();
 
             state.tabOrder.forEach(tabId => {
-                const folderName = tabFolders.get(tabId);
-                const count = folderCounts.get(folderName);
-
+                // Use custom name if set, otherwise use folder-based name
                 let title;
-                if (count > 1) {
-                    const idx = (folderIndices.get(folderName) || 0) + 1;
-                    folderIndices.set(folderName, idx);
-                    title = `${folderName} ${idx}`;
+                if (state.tabCustomNames.has(tabId)) {
+                    title = state.tabCustomNames.get(tabId);
                 } else {
-                    title = folderName;
+                    const folderName = tabFolders.get(tabId);
+                    const count = folderCounts.get(folderName);
+
+                    if (count > 1) {
+                        const idx = (folderIndices.get(folderName) || 0) + 1;
+                        folderIndices.set(folderName, idx);
+                        title = `${folderName} ${idx}`;
+                    } else {
+                        title = folderName;
+                    }
                 }
 
                 const tabEl = document.querySelector(`.tab[data-id="${tabId}"] .tab-title`);
@@ -1411,10 +1500,7 @@
             term.loadAddon(fitAddon);
 
             // Add web links addon for clickable URLs
-            const webLinksAddon = new WebLinksAddon(handleUrlClick, {
-                // URL regex pattern to match http://, https://, file://, and www.
-                urlRegex: /(?:https?:\/\/|file:\/\/|www\.)[^\s<>\[\]{}|\\^`"']+/gi
-            });
+            const webLinksAddon = new WebLinksAddon(handleUrlClick);
             term.loadAddon(webLinksAddon);
 
             // Add search addon for find functionality
@@ -1422,6 +1508,16 @@
             term.loadAddon(searchAddon);
 
             term.open(termContainer);
+
+            // Fallback link handling in case xterm click routing is interrupted.
+            termContainer.addEventListener('click', (e) => {
+                const anchor = e.target?.closest?.('a');
+                if (!anchor || !termContainer.contains(anchor)) return;
+
+                e.preventDefault();
+                e.stopPropagation();
+                openExternalUrl(anchor.getAttribute('href') || anchor.textContent || '');
+            }, true);
 
             setTimeout(() => fitAddon.fit(), 0);
 
@@ -1597,11 +1693,87 @@
                 }
             });
             term.onResize(({ cols, rows }) => ptyProcess.resize(cols, rows));
+            if (term.textarea) {
+                term.textarea.addEventListener('focus', () => {
+                    setActivePane(paneId);
+                });
+            }
 
-            // Focus tracking (click only - no per-keystroke tracking)
-            termContainer.addEventListener('click', () => {
-                state.activePaneId = paneId;
+            // Focus tracking and click-to-position
+            termContainer.addEventListener('mousedown', (e) => {
+                if (e.target?.closest?.('a')) return;
+                setActivePane(paneId);
+
+                // Skip if it's a selection drag (will be handled by mouseup)
+                // Store the mousedown position for comparison
+                termContainer._clickStart = { x: e.clientX, y: e.clientY };
+            });
+
+            termContainer.addEventListener('mouseup', (e) => {
+                if (e.target?.closest?.('a')) return;
+                // Check if this was a click (not a drag for selection)
+                const start = termContainer._clickStart;
+                if (!start) return;
+
+                const dx = Math.abs(e.clientX - start.x);
+                const dy = Math.abs(e.clientY - start.y);
+
+                // If mouse moved more than 5px, it's a drag/selection, not a click
+                if (dx > 5 || dy > 5) return;
+
                 term.focus();
+
+                // Get actual cell dimensions from xterm
+                const cellWidth = term._core._renderService.dimensions.css.cell.width;
+                const cellHeight = term._core._renderService.dimensions.css.cell.height;
+
+                // Get the viewport element (where the actual terminal content is)
+                const viewportEl = termContainer.querySelector('.xterm-screen');
+                if (!viewportEl) return;
+
+                const rect = viewportEl.getBoundingClientRect();
+                const clickedCol = Math.floor((e.clientX - rect.left) / cellWidth);
+                const clickedRow = Math.floor((e.clientY - rect.top) / cellHeight);
+
+                // Click-to-position: move cursor to clicked position on input line
+                const buffer = term.buffer.active;
+                const cursorY = buffer.cursorY + buffer.viewportY;
+                const cursorX = buffer.cursorX;
+                const clickedRowAbsolute = clickedRow + buffer.viewportY;
+
+                // Only handle clicks on the current cursor line
+                if (clickedRowAbsolute !== cursorY) return;
+
+                const line = buffer.getLine(cursorY);
+                if (!line) return;
+
+                const lineText = line.translateToString();
+                const lineEnd = lineText.trimEnd().length;
+
+                // Find prompt end
+                let promptEnd = 0;
+                const promptPatterns = ['% ', '$ ', '> ', '# ', '❯ ', '→ '];
+                for (const pattern of promptPatterns) {
+                    const idx = lineText.lastIndexOf(pattern);
+                    if (idx !== -1 && idx + pattern.length <= lineEnd) {
+                        promptEnd = Math.max(promptEnd, idx + pattern.length);
+                    }
+                }
+
+                // Only handle clicks within the input area
+                if (clickedCol < promptEnd || clickedCol > lineEnd) return;
+
+                const targetX = Math.min(clickedCol, lineEnd);
+                const delta = targetX - cursorX;
+
+                if (delta === 0) return;
+
+                // Send arrow key sequences to move cursor
+                if (delta > 0) {
+                    ptyProcess.write('\x1b[C'.repeat(delta));
+                } else {
+                    ptyProcess.write('\x1b[D'.repeat(-delta));
+                }
             });
 
             const paneData = { id: paneId, term, pty: ptyProcess, fitAddon, searchAddon, element: paneElement, termContainer };
@@ -1625,8 +1797,7 @@
                 tabData.panes.set(paneId, paneData);
             }
 
-            state.activePaneId = paneId;
-            requestAnimationFrame(() => term.focus());
+            setActivePane(paneId, { focusPane: true });
 
             return paneData;
         }
@@ -1808,27 +1979,71 @@
             // Set new active pane
             const remainingPane = tabData.panes.values().next().value;
             if (remainingPane) {
-                state.activePaneId = remainingPane.id;
-                remainingPane.term.focus();
+                setActivePane(remainingPane.id, { focusPane: true });
             }
 
             // Refit all
             setTimeout(() => fitAllPanes(tabData), 50);
         }
 
-        // Tab drag and drop state
-        const tabDrag = {
-            dragging: false,
-            draggedTabId: null,
-            draggedElement: null,
-            dragPreview: null,
-            startX: 0,
-            startY: 0,
-            offsetX: 0,
-            offsetY: 0,
-            hasMoved: false,
-            moveThreshold: 5 // pixels before considering it a drag
-        };
+        // Tab renaming functionality
+        function startTabRename(tabId, titleElement) {
+            const currentText = titleElement.textContent;
+
+            // Create input element
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'tab-title-input';
+            input.value = currentText;
+
+            // Replace title with input
+            titleElement.style.display = 'none';
+            titleElement.parentNode.insertBefore(input, titleElement);
+
+            // Focus and select all text - need to wait for render
+            setTimeout(() => {
+                input.focus();
+                input.select();
+            }, 0);
+
+            // Handle completion (Enter or blur)
+            const finishRename = () => {
+                const newName = input.value.trim();
+
+                if (newName && newName !== currentText) {
+                    // Save custom name
+                    state.tabCustomNames.set(tabId, newName);
+                } else if (!newName) {
+                    // If empty, remove custom name (revert to auto name)
+                    state.tabCustomNames.delete(tabId);
+                }
+
+                // Remove input and show title again
+                input.remove();
+                titleElement.style.display = '';
+
+                // Update all titles to reflect change
+                updateAllTabTitles();
+            };
+
+            // Listen for Enter key
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    finishRename();
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    // Cancel - just remove input without saving
+                    input.remove();
+                    titleElement.style.display = '';
+                }
+            });
+
+            // Listen for blur (clicking outside) - but delay it slightly to prevent immediate blur
+            setTimeout(() => {
+                input.addEventListener('blur', finishRename);
+            }, 100);
+        }
 
         function createTab(id) {
             const tab = document.createElement('div');
@@ -1850,221 +2065,25 @@
             tab.appendChild(title);
             tab.appendChild(closeBtn);
 
-            // Click handler for switching tabs (only if not dragging)
+            // Click handler for switching tabs
             tab.addEventListener('click', (e) => {
-                if (!tabDrag.hasMoved) {
-                    switchToTab(id);
-                }
+                // Don't switch if clicking on the title during rename or close button
+                if (e.target.classList.contains('tab-title-input')) return;
+                if (e.target.closest('.tab-close')) return;
+                switchToTab(id);
             });
 
-            // Drag start on mousedown
-            tab.addEventListener('mousedown', (e) => {
-                // Don't start drag on close button
+            // Double-click handler for renaming
+            tab.addEventListener('dblclick', (e) => {
+                // Don't rename if clicking on close button
                 if (e.target.closest('.tab-close')) return;
-
-                tabDrag.dragging = false;
-                tabDrag.hasMoved = false;
-                tabDrag.draggedTabId = id;
-                tabDrag.draggedElement = tab;
-                tabDrag.startX = e.clientX;
-                tabDrag.startY = e.clientY;
-
-                const rect = tab.getBoundingClientRect();
-                tabDrag.offsetX = e.clientX - rect.left;
-                tabDrag.offsetY = e.clientY - rect.top;
-
-                document.addEventListener('mousemove', handleTabDragMove);
-                document.addEventListener('mouseup', handleTabDragEnd);
+                e.preventDefault();
+                e.stopPropagation();
+                startTabRename(id, title);
             });
 
             document.getElementById('tabs').appendChild(tab);
             return tab;
-        }
-
-        function handleTabDragMove(e) {
-            if (tabDrag.draggedElement === null) return;
-
-            const deltaX = Math.abs(e.clientX - tabDrag.startX);
-            const deltaY = Math.abs(e.clientY - tabDrag.startY);
-
-            // Check if we've moved past threshold to start actual drag
-            if (!tabDrag.dragging && (deltaX > tabDrag.moveThreshold || deltaY > tabDrag.moveThreshold)) {
-                tabDrag.dragging = true;
-                tabDrag.hasMoved = true;
-                startTabDragVisual();
-            }
-
-            if (!tabDrag.dragging) return;
-
-            // Move the preview
-            if (tabDrag.dragPreview) {
-                tabDrag.dragPreview.style.left = (e.clientX - tabDrag.offsetX) + 'px';
-                tabDrag.dragPreview.style.top = (e.clientY - tabDrag.offsetY) + 'px';
-            }
-
-            // Update drop indicators on other tabs
-            updateDropIndicators(e.clientX);
-        }
-
-        function startTabDragVisual() {
-            const tab = tabDrag.draggedElement;
-            if (!tab) return;
-
-            // Mark original tab as dragging
-            tab.classList.add('dragging');
-
-            // Create floating preview
-            const preview = tab.cloneNode(true);
-            preview.className = 'tab tab-drag-preview';
-            preview.style.width = tab.offsetWidth + 'px';
-            preview.style.height = tab.offsetHeight + 'px';
-            preview.style.background = 'rgba(255, 255, 255, 0.15)';
-
-            const rect = tab.getBoundingClientRect();
-            preview.style.left = rect.left + 'px';
-            preview.style.top = rect.top + 'px';
-
-            document.body.appendChild(preview);
-            tabDrag.dragPreview = preview;
-        }
-
-        function updateDropIndicators(clientX) {
-            // Clear all indicators
-            document.querySelectorAll('.tab').forEach(t => {
-                t.classList.remove('drag-over-left', 'drag-over-right');
-            });
-
-            const tabsContainer = document.getElementById('tabs');
-            const tabs = Array.from(tabsContainer.querySelectorAll('.tab:not(.tab-drag-preview)'));
-
-            for (const tab of tabs) {
-                if (tab === tabDrag.draggedElement) continue;
-
-                const rect = tab.getBoundingClientRect();
-                const midpoint = rect.left + rect.width / 2;
-
-                if (clientX >= rect.left && clientX <= rect.right) {
-                    if (clientX < midpoint) {
-                        tab.classList.add('drag-over-left');
-                    } else {
-                        tab.classList.add('drag-over-right');
-                    }
-                    break;
-                }
-            }
-        }
-
-        function handleTabDragEnd(e) {
-            document.removeEventListener('mousemove', handleTabDragMove);
-            document.removeEventListener('mouseup', handleTabDragEnd);
-
-            if (tabDrag.dragging) {
-                // Perform the reorder
-                const targetInfo = getDropTarget(e.clientX);
-                if (targetInfo) {
-                    reorderTabs(tabDrag.draggedTabId, targetInfo.targetId, targetInfo.insertAfter);
-                }
-
-                // Cleanup visual elements
-                tabDrag.draggedElement?.classList.remove('dragging');
-                tabDrag.dragPreview?.remove();
-
-                // Clear indicators
-                document.querySelectorAll('.tab').forEach(t => {
-                    t.classList.remove('drag-over-left', 'drag-over-right');
-                });
-            }
-
-            // Reset state
-            tabDrag.dragging = false;
-            tabDrag.draggedElement = null;
-            tabDrag.dragPreview = null;
-            tabDrag.draggedTabId = null;
-
-            // Small delay before resetting hasMoved to prevent click from firing
-            setTimeout(() => {
-                tabDrag.hasMoved = false;
-            }, 10);
-        }
-
-        function getDropTarget(clientX) {
-            const tabsContainer = document.getElementById('tabs');
-            const tabs = Array.from(tabsContainer.querySelectorAll('.tab:not(.tab-drag-preview)'));
-
-            for (const tab of tabs) {
-                const tabId = parseInt(tab.dataset.id);
-                if (tabId === tabDrag.draggedTabId) continue;
-
-                const rect = tab.getBoundingClientRect();
-                if (clientX >= rect.left && clientX <= rect.right) {
-                    const midpoint = rect.left + rect.width / 2;
-                    return {
-                        targetId: tabId,
-                        insertAfter: clientX >= midpoint
-                    };
-                }
-            }
-
-            // Check if dropped before first or after last tab
-            if (tabs.length > 0) {
-                const firstTab = tabs[0];
-                const lastTab = tabs[tabs.length - 1];
-                const firstRect = firstTab.getBoundingClientRect();
-                const lastRect = lastTab.getBoundingClientRect();
-
-                if (clientX < firstRect.left) {
-                    const firstId = parseInt(firstTab.dataset.id);
-                    if (firstId !== tabDrag.draggedTabId) {
-                        return { targetId: firstId, insertAfter: false };
-                    }
-                } else if (clientX > lastRect.right) {
-                    const lastId = parseInt(lastTab.dataset.id);
-                    if (lastId !== tabDrag.draggedTabId) {
-                        return { targetId: lastId, insertAfter: true };
-                    }
-                }
-            }
-
-            return null;
-        }
-
-        function reorderTabs(draggedId, targetId, insertAfter) {
-            if (draggedId === targetId) return;
-
-            // Update state.tabOrder
-            const draggedIndex = state.tabOrder.indexOf(draggedId);
-            if (draggedIndex === -1) return;
-
-            // Remove from current position
-            state.tabOrder.splice(draggedIndex, 1);
-
-            // Find new target index (after removal)
-            let targetIndex = state.tabOrder.indexOf(targetId);
-            if (targetIndex === -1) return;
-
-            // Insert at new position
-            if (insertAfter) {
-                targetIndex += 1;
-            }
-            state.tabOrder.splice(targetIndex, 0, draggedId);
-
-            // Reorder DOM elements
-            const tabsContainer = document.getElementById('tabs');
-            const draggedTab = tabsContainer.querySelector(`.tab[data-id="${draggedId}"]`);
-            const targetTab = tabsContainer.querySelector(`.tab[data-id="${targetId}"]`);
-
-            if (draggedTab && targetTab) {
-                if (insertAfter) {
-                    // Insert after target
-                    targetTab.parentNode.insertBefore(draggedTab, targetTab.nextSibling);
-                } else {
-                    // Insert before target
-                    targetTab.parentNode.insertBefore(draggedTab, targetTab);
-                }
-            }
-
-            // Update tab titles (they may have numbers that need updating)
-            updateAllTabTitles();
         }
 
         function createTabContent(tabId, initialCwd = null) {
@@ -2117,8 +2136,7 @@
                 // Focus first pane
                 const firstPane = tabData.panes.values().next().value;
                 if (firstPane) {
-                    state.activePaneId = firstPane.id;
-                    firstPane.term.focus();
+                    setActivePane(firstPane.id, { focusPane: true });
                 }
             });
         }
@@ -2139,6 +2157,7 @@
 
             state.tabs.delete(id);
             state.tabCwds.delete(id);
+            state.tabCustomNames.delete(id);
             state.tabOrder = state.tabOrder.filter(i => i !== id);
 
             if (state.tabOrder.length === 0) {
@@ -2223,37 +2242,78 @@
             const pane = getActivePane();
             if (pane) {
                 const term = pane.term;
-                const buffer = term.buffer.active;
-                const cursorY = buffer.cursorY + buffer.viewportY;
-                const cursorX = buffer.cursorX;
-                const line = buffer.getLine(cursorY);
-                if (line) {
-                    const lineText = line.translateToString();
-                    // Find prompt end by looking for common prompt endings
-                    let promptEnd = 0;
-                    const promptPatterns = ['% ', '$ ', '> ', '# ', '❯ ', '→ '];
-                    for (const pattern of promptPatterns) {
-                        const idx = lineText.lastIndexOf(pattern);
-                        if (idx !== -1 && idx + pattern.length <= cursorX) {
-                            promptEnd = Math.max(promptEnd, idx + pattern.length);
+                // Clear any existing selection first
+                term.clearSelection();
+
+                // Use setTimeout to ensure selection is fully cleared
+                setTimeout(() => {
+                    const buffer = term.buffer.active;
+                    const cursorY = buffer.cursorY + buffer.viewportY;
+                    const cursorX = buffer.cursorX;
+                    const line = buffer.getLine(cursorY);
+                    if (line) {
+                        const lineText = line.translateToString();
+                        const lineEnd = lineText.trimEnd().length;
+                        // Find prompt end by looking for common prompt endings
+                        let promptEnd = 0;
+                        const promptPatterns = ['% ', '$ ', '> ', '# ', '❯ ', '→ '];
+                        for (const pattern of promptPatterns) {
+                            const idx = lineText.lastIndexOf(pattern);
+                            if (idx !== -1 && idx + pattern.length <= lineEnd) {
+                                promptEnd = Math.max(promptEnd, idx + pattern.length);
+                            }
+                        }
+                        // Select from prompt end to end of line content
+                        if (lineEnd > promptEnd) {
+                            term.select(promptEnd, cursorY, lineEnd - promptEnd);
                         }
                     }
-                    // Select from prompt end to cursor
-                    if (cursorX > promptEnd) {
-                        term.select(promptEnd, cursorY, cursorX - promptEnd);
-                    }
-                }
+                }, 0);
             }
         });
 
         // UI event listeners
         document.getElementById('new-tab-btn').onclick = newTab;
 
+        // Always on top toggle
+        let alwaysOnTop = false;
+        const lockBtn = document.getElementById('lock-btn');
+
+        function toggleAlwaysOnTop() {
+            alwaysOnTop = !alwaysOnTop;
+            ipcRenderer.invoke('toggle-always-on-top', alwaysOnTop);
+            if (alwaysOnTop) {
+                lockBtn.classList.add('active');
+            } else {
+                lockBtn.classList.remove('active');
+            }
+        }
+
+        lockBtn.onclick = toggleAlwaysOnTop;
+
         // Debounced window resize handler
         const debouncedWindowResize = debounce(() => {
             state.tabs.forEach(tabData => fitAllPanes(tabData, true));
         }, 50);
         window.addEventListener('resize', debouncedWindowResize);
+
+        // Scroll to bottom when window regains focus
+        window.addEventListener('focus', () => {
+            const pane = getActivePane();
+            if (pane && pane.term) {
+                pane.term.scrollToBottom();
+            }
+        });
+
+        // Also handle visibility change (switching back from other apps/screens)
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                const pane = getActivePane();
+                if (pane && pane.term) {
+                    pane.term.scrollToBottom();
+                }
+            }
+        });
 
         // Context menu
         const contextMenu = document.getElementById('context-menu');
@@ -2266,7 +2326,7 @@
             if (paneTerminal) {
                 const paneElement = paneTerminal.closest('.pane');
                 if (paneElement && paneElement.dataset.paneId) {
-                    state.activePaneId = parseInt(paneElement.dataset.paneId);
+                    setActivePane(parseInt(paneElement.dataset.paneId));
                 }
             }
 
@@ -2336,6 +2396,14 @@
         // Global keyboard shortcut for Cmd+F and Cmd+Shift+P
         // Use capture phase to intercept before xterm gets the event
         document.addEventListener('keydown', (e) => {
+            // Cmd+L - Toggle Always on Top
+            if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key === 'l') {
+                e.preventDefault();
+                e.stopPropagation();
+                toggleAlwaysOnTop();
+                return;
+            }
+
             // Cmd+Shift+P - Command Palette
             if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'p') {
                 e.preventDefault();
@@ -2375,6 +2443,111 @@
                     e.stopPropagation();
                     activeEl.setSelectionRange(0, activeEl.value.length);
                     return;
+                }
+            }
+
+            // Cmd+Shift+Left - Select from cursor to start of input
+            if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'ArrowLeft' && !state.search.visible && !commandPalette.visible) {
+                const pane = getActivePane();
+                if (pane) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const term = pane.term;
+                    const buffer = term.buffer.active;
+                    const cursorY = buffer.cursorY + buffer.viewportY;
+                    const cursorX = buffer.cursorX;
+                    const line = buffer.getLine(cursorY);
+                    if (line) {
+                        const lineText = line.translateToString();
+                        let promptEnd = 0;
+                        const promptPatterns = ['% ', '$ ', '> ', '# ', '❯ ', '→ '];
+                        for (const pattern of promptPatterns) {
+                            const idx = lineText.lastIndexOf(pattern);
+                            if (idx !== -1 && idx + pattern.length <= cursorX) {
+                                promptEnd = Math.max(promptEnd, idx + pattern.length);
+                            }
+                        }
+                        if (cursorX > promptEnd) {
+                            term.select(promptEnd, cursorY, cursorX - promptEnd);
+                        }
+                    }
+                }
+            }
+
+            // Cmd+Shift+Right - Select from cursor to end of input
+            if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'ArrowRight' && !state.search.visible && !commandPalette.visible) {
+                const pane = getActivePane();
+                if (pane) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const term = pane.term;
+                    const buffer = term.buffer.active;
+                    const cursorY = buffer.cursorY + buffer.viewportY;
+                    const cursorX = buffer.cursorX;
+                    const line = buffer.getLine(cursorY);
+                    if (line) {
+                        const lineText = line.translateToString().trimEnd();
+                        const lineEnd = lineText.length;
+                        if (lineEnd > cursorX) {
+                            term.select(cursorX, cursorY, lineEnd - cursorX);
+                        }
+                    }
+                }
+            }
+
+            // Backspace with selection - delete selected text only if selection is in input area
+            if (e.key === 'Backspace' && !state.search.visible && !commandPalette.visible) {
+                const pane = getActivePane();
+                if (pane && pane.term.hasSelection()) {
+                    const term = pane.term;
+                    const selection = term.getSelectionPosition();
+
+                    if (selection) {
+                        const buffer = term.buffer.active;
+                        // Use selection's Y position, not cursor's Y position
+                        const selectionY = selection.start.y;
+
+                        // Check if selection is on a single line
+                        const line = buffer.getLine(selectionY);
+                        if (line && selection.start.y === selection.end.y) {
+                            const lineText = line.translateToString();
+                            const lineEnd = lineText.trimEnd().length;
+
+                            // Find prompt end
+                            let promptEnd = 0;
+                            const promptPatterns = ['% ', '$ ', '> ', '# ', '❯ ', '→ '];
+                            for (const pattern of promptPatterns) {
+                                const idx = lineText.lastIndexOf(pattern);
+                                if (idx !== -1 && idx + pattern.length <= lineEnd) {
+                                    promptEnd = Math.max(promptEnd, idx + pattern.length);
+                                }
+                            }
+
+                            // Only process if selection starts at or after prompt end
+                            if (selection.start.x >= promptEnd) {
+                                e.preventDefault();
+                                e.stopPropagation();
+
+                                // Get the full input text (after prompt to end of line)
+                                const inputText = lineText.substring(promptEnd, lineEnd);
+
+                                // Calculate what text should remain using position-based approach
+                                const selStart = selection.start.x - promptEnd;
+                                const selEnd = selection.end.x - promptEnd;
+                                const beforeSelection = inputText.substring(0, selStart);
+                                const afterSelection = inputText.substring(selEnd);
+                                const newText = beforeSelection + afterSelection;
+
+                                // Clear line and retype
+                                pane.pty.write('\x15'); // Ctrl+U to clear
+                                if (newText.length > 0) {
+                                    pane.pty.write(newText);
+                                }
+
+                                term.clearSelection();
+                            }
+                        }
+                    }
                 }
             }
         }, true);

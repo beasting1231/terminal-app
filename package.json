@@ -14,7 +14,7 @@
     "mac": {
       "category": "public.app-category.developer-tools",
       "target": "dir",
-      "icon": "icon.png"
+      "icon": "icon.icns"
     },
     "files": [
       "main.js",
