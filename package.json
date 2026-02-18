@@ -3,17 +3,25 @@
   "version": "1.0.0",
   "description": "A simple terminal emulator for macOS",
   "main": "main.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beasting1231/terminal-app.git"
+  },
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder --mac",
-    "dist": "electron-builder --mac --dir"
+    "build": "electron-builder --mac dmg zip --publish never",
+    "dist": "electron-builder --mac --dir --publish never",
+    "release": "electron-builder --mac dmg zip --publish always"
   },
   "build": {
     "appId": "com.terminal.app",
     "productName": "Terminal",
     "mac": {
       "category": "public.app-category.developer-tools",
-      "target": "dir",
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "icon": "icon.icns"
     },
     "files": [

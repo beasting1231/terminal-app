@@ -53,6 +53,14 @@ Create custom shortcuts for frequently used commands:
 
 ## Installation
 
+### Install with Homebrew (recommended)
+
+```bash
+brew install --cask beasting1231/tap/terminal-app
+```
+
+### Run from source
+
 ```bash
 # Clone the repository
 git clone https://github.com/beasting1231/terminal-app.git
@@ -64,6 +72,24 @@ npm install
 # Run the app
 npm start
 ```
+
+## Release automation (GitHub Actions)
+
+Tagging a version like `v1.0.1` triggers:
+- macOS build (`.dmg` + `.zip`)
+- GitHub Release upload
+- Homebrew cask update in your tap repo
+
+```bash
+git tag v1.0.1
+git push origin v1.0.1
+```
+
+Required repo secret:
+- `HOMEBREW_TAP_GITHUB_TOKEN`: Personal access token with write access to your tap repo
+
+Optional repo secret:
+- `HOMEBREW_TAP_REPO`: Tap repo path, defaults to `<github-owner>/homebrew-tap`
 
 ## Building
 

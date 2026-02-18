@@ -1,0 +1,100 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: macos-14
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      dmg_name: ${{ steps.meta.outputs.dmg_name }}
+      dmg_sha256: ${{ steps.meta.outputs.dmg_sha256 }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build release artifacts
+        run: npm run build
+
+      - name: Collect artifact metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          DMG_PATH="$(ls dist/*.dmg | head -n 1)"
+          DMG_NAME="$(basename "$DMG_PATH")"
+          DMG_SHA256="$(shasum -a 256 "$DMG_PATH" | awk '{print $1}')"
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "dmg_name=$DMG_NAME" >> "$GITHUB_OUTPUT"
+          echo "dmg_sha256=$DMG_SHA256" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.dmg
+            dist/*.zip
+
+  update-homebrew-cask:
+    needs: build-and-release
+    if: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update cask in tap repo
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+          TAP_REPO: ${{ secrets.HOMEBREW_TAP_REPO || format('{0}/homebrew-tap', github.repository_owner) }}
+          VERSION: ${{ needs.build-and-release.outputs.version }}
+          DMG_NAME: ${{ needs.build-and-release.outputs.dmg_name }}
+          DMG_SHA256: ${{ needs.build-and-release.outputs.dmg_sha256 }}
+          OWNER: ${{ github.repository_owner }}
+          SOURCE_REPO: ${{ github.event.repository.name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/${TAP_REPO}.git" tap
+          mkdir -p tap/Casks
+
+          cat > tap/Casks/terminal-app.rb <<EOF
+          cask "terminal-app" do
+            version "${VERSION}"
+            sha256 "${DMG_SHA256}"
+
+            url "https://github.com/${OWNER}/${SOURCE_REPO}/releases/download/v#{version}/${DMG_NAME}"
+            name "Terminal"
+            desc "A simple terminal emulator for macOS"
+            homepage "https://github.com/${OWNER}/${SOURCE_REPO}"
+
+            app "Terminal.app"
+          end
+          EOF
+
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet; then
+            echo "No cask changes to commit."
+            exit 0
+          fi
+
+          git add Casks/terminal-app.rb
+          git commit -m "terminal-app ${VERSION}"
+          git push
